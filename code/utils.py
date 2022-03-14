@@ -1,8 +1,12 @@
 import json
+import copy
 import os
 from tqdm import tqdm
 import sys
 import logging
+import random
+
+random.seed()
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +155,7 @@ def gen_feature_sample(data_sample, template, mask_token='[MASK]'):
     feature_sample['input_sentences'] = [masked_sentence[0]]
     return feature_sample
 
-def load_data(data_path, template, vocab_subset=None, mask_token='[MASK]'):
+def load_data(data_path, template, vocab_subset=None, mask_token='[MASK]', few_shot_count=0):
     all_samples = []
 
     distinct_facts = set()
@@ -166,6 +170,33 @@ def load_data(data_path, template, vocab_subset=None, mask_token='[MASK]'):
 
         feature_sample = gen_feature_sample(data_sample, template, mask_token)
         all_samples.append(feature_sample)
+    if few_shot_count > 0:
+        all_samples = sorted(all_samples, key=lambda x: len(x['sub_label']))
+        max_len = 400
+        few_shot_samples = []
+        for sample in all_samples:
+            input_sentence = sample['input_sentences'][0]
+            used_sub_set = {sample['sub_label']}
+            used_obj_set = {sample['obj_label']}
+            sample_count, try_count = 0, 100
+            while few_shot_count > sample_count and try_count > 0:
+                new_sample = random.choice(all_samples)
+                try_count -= 1
+                if new_sample['sub_label'] not in used_sub_set and new_sample['obj_label'] not in used_obj_set:
+                    new_sentence = new_sample['input_sentences'][0].replace(mask_token, new_sample['obj_label']) 
+                    if len((new_sentence + ' ' + input_sentence).split()) > max_len:
+                        break
+                    input_sentence = new_sentence + ' . ' + input_sentence # new_sentence + ' [SEP] ' + input_sentence
+                    used_sub_set.add(new_sample['sub_label'])
+                    used_obj_set.add(new_sample['obj_label'])
+                    sample_count += 1
+
+            few_shot_sample = copy.deepcopy(sample)
+            few_shot_sample['input_sentences'][0] = input_sentence
+           
+            few_shot_samples.append(few_shot_sample)
+        all_samples = few_shot_samples
+               
 
     return all_samples
 

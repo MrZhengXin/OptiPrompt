@@ -107,11 +107,14 @@ if __name__ == "__main__":
     parser.add_argument('--eval_per_epoch', type=int, default=3)
 
     parser.add_argument('--do_shuffle', action='store_true')
+    parser.add_argument('--no_subject', action='store_true')
     parser.add_argument('--do_eval', action='store_true', help="whether to run evaluation")
     parser.add_argument('--do_train', action='store_true', help="whether to run training process")
     parser.add_argument('--check_step', type=int, default=-1, help='how often to output training loss')
 
     parser.add_argument('--seed', type=int, default=6)
+
+    parser.add_argument('--few_shot_count', type=int, default=0)
 
     parser.add_argument('--relation', type=str, required=True, help='which relation is considered in this run')
     parser.add_argument('--init_manual_template', action='store_true', help='whether to use manual template to initialize the dense vectors')
@@ -154,19 +157,22 @@ if __name__ == "__main__":
     else:
         filter_indices = None
         index_list = None
+        vocab_subset = []
 
     if n_gpu > 1:
         model.mlm_model = torch.nn.DataParallel(model.mlm_model)
 
     template = init_template(args, model)
+    if args.no_subject:
+        template = template.replace('[X]', '[Z]')
     logger.info('Template: %s'%template)
 
     if args.do_train:
         # Prepare train/valid data
-        train_samples = load_data(args.train_data, template, vocab_subset=vocab_subset, mask_token=model.MASK)
+        train_samples = load_data(args.train_data, template, vocab_subset=vocab_subset, mask_token=model.MASK, few_shot_count=args.few_shot_count)
         train_samples_batches, train_sentences_batches = batchify(train_samples, args.train_batch_size * max(n_gpu, 1))
         logger.info('Train batches: %d'%len(train_samples_batches))
-        valid_samples = load_data(args.dev_data, template, vocab_subset=vocab_subset, mask_token=model.MASK)
+        valid_samples = load_data(args.dev_data, template, vocab_subset=vocab_subset, mask_token=model.MASK, few_shot_count=args.few_shot_count)
         valid_samples_batches, valid_sentences_batches = batchify(valid_samples, args.eval_batch_size * max(n_gpu, 1))
         logger.info('Valid batches: %d'%len(valid_samples_batches))
 
@@ -233,7 +239,7 @@ if __name__ == "__main__":
     if args.do_eval:
         model = load_optiprompt(args)
 
-        eval_samples = load_data(args.test_data, template, vocab_subset=vocab_subset, mask_token=model.MASK)
+        eval_samples = load_data(args.test_data, template, vocab_subset=vocab_subset, mask_token=model.MASK, few_shot_count=args.few_shot_count)
         eval_samples_batches, eval_sentences_batches = batchify(eval_samples, args.eval_batch_size * max(n_gpu, 1))
         
         evaluate(model, eval_samples_batches, eval_sentences_batches, filter_indices, index_list, output_topk=args.output_dir if args.output_predictions else None)

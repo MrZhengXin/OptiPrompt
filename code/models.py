@@ -319,11 +319,11 @@ class Prober():
             logger.debug("\n{}\n".format(tokenized_text_list))
 
         with torch.no_grad():
-            logits = self.mlm_model(
+            logits = self.mlm_model.forward(
                 input_ids=tokens_tensor.to(self._model_device),
                 token_type_ids=segments_tensor.to(self._model_device),
                 attention_mask=attention_mask_tensor.to(self._model_device),
-            )
+            ).logits
 
             log_probs = F.log_softmax(logits, dim=-1).cpu()
 
@@ -341,23 +341,24 @@ class Prober():
 
         if training:
             self.mlm_model.train()
-            loss = self.mlm_model(
+            loss = self.mlm_model.forward(
                 input_ids=tokens_tensor.to(self._model_device),
                 token_type_ids=segments_tensor.to(self._model_device),
                 attention_mask=attention_mask_tensor.to(self._model_device),
-                masked_lm_labels=mlm_labels_tensor.to(self._model_device),
-            )
-            loss = loss[0]
+                labels=mlm_labels_tensor.to(self._model_device),
+            ).loss
+            # loss = loss[0]
         else:
             self.mlm_model.eval()
             with torch.no_grad():
-                loss, logits = self.mlm_model(
+                outputs = self.mlm_model.forward(
                     input_ids=tokens_tensor.to(self._model_device),
                     token_type_ids=segments_tensor.to(self._model_device),
                     attention_mask=attention_mask_tensor.to(self._model_device),
-                    masked_lm_labels=mlm_labels_tensor.to(self._model_device),
+                    labels=mlm_labels_tensor.to(self._model_device),
                 )
-            log_probs = F.log_softmax(logits, dim=-1).cpu()
+                loss, logits = outputs.loss.sum(), outputs.logits
+                log_probs = F.log_softmax(logits, dim=-1).cpu()
 
         if training:
             return loss
